@@ -1,6 +1,6 @@
 pipeline {
   agent {
-   label "second-pipline"
+   label "jenkins-node"
   }
 
   triggers {
