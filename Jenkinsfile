@@ -44,7 +44,7 @@ pipeline {
     stage('Run Container') {
       agent { label 'controller' }
       steps {
-        sh 'sudo ansible-playbook playbook.yaml'
+        sh 'ansible-playbook playbook.yaml'
       }
     }
   }
