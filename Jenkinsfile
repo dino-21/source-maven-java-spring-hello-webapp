@@ -44,8 +44,7 @@ pipeline {
     stage('Run Container') {
       agent { label 'controller' }
       steps {
-        sh 'docker container rm -f myhello || true'
-        sh 'docker container run --detach --name myhello -p 80:8080 ysboo1979053/myhello:latest'
+        sh 'sudo ansible-playbook playbook.yaml'
       }
     }
   }
