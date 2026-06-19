@@ -1,51 +1,84 @@
 pipeline {
-  agent none
+  agent {
+    kubernetes {
+      yaml '''
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: maven
+            image: maven:3-eclipse-temurin-21
+            command: ["sleep"]
+            args: ["infinity"]
+          - name: buildah
+            image: quay.io/buildah/stable:v1
+            command: ["sleep"]
+            args: ["infinity"]
+            securityContext:
+              privileged: true
+            volumeMounts:
+            - name: registry-credentials
+              mountPath: /root/.docker
+          volumes:
+          - name: registry-credentials
+            secret:
+              secretName: docker-hub-credential
+              items:
+              - key: .dockerconfigjson
+                path: config.json
+        '''
+    }
+  }
+  environment {
+    REGISTRY    = 'docker.io'
+    USERNAME    = 'ysboo1979053'
+    IMAGE_NAME  = 'myapp'
+    DOCKERFILE  = 'Dockerfile'
+    IMAGE_TAG   = "${REGISTRY}/${USERNAME}/${IMAGE_NAME}"
+  }
   stages {
     stage('Checkout') {
-      agent { docker { image 'maven:3-eclipse-temurin-21' } }
       steps {
-        git branch: 'main', url: 'https://github.com/dino-21/source-maven-java-spring-hello-webapp.git'
-      }
-    }
-    stage('Test Application') {
-      agent { docker { image 'maven:3-eclipse-temurin-21' } }
-      steps { sh 'mvn test' }
-    }
-    stage('Build Application') {
-      agent { docker { image 'maven:3-eclipse-temurin-21' } }
-      steps {
-        sh 'mvn clean package -DskipTests=true'
-        stash name: 'war-file', includes: 'target/*.war'
-      }
-    }
-    stage('Build Container Image') {
-      agent { label 'controller' }
-      steps {
-        unstash 'war-file'
-        sh 'docker image build -t myhello:v1 .'
-      }
-    }
-    stage('Tag Container Image') {
-      agent { label 'controller' }
-      steps {
-        sh "docker image tag myhello:v1 ysboo1979053/myhello:v${BUILD_NUMBER}"
-        sh "docker image tag myhello:v1 ysboo1979053/myhello:latest"
-      }
-    }
-    stage('Push Container Image') {
-      agent { label 'controller' }
-      steps {
-        withDockerRegistry(credentialsId: 'docker-registry-credential', url: 'https://index.docker.io/v1/') {
-          sh "docker image push ysboo1979053/myhello:v${BUILD_NUMBER}"
-          sh "docker image push ysboo1979053/myhello:latest"
+        container('maven') {
+          git branch: 'main', url: 'https://github.com/dino-21/source-maven-java-spring-hello-webapp'
         }
       }
     }
-    stage('Run Container') {
-      agent { label 'controller' }
+    stage('Test Application') {
       steps {
-        sh 'ansible-playbook playbook.yaml'
+        container('maven') {
+          sh 'mvn test'
+        }
+      }
+    }
+    stage('Build Application') {
+      steps {
+        container('maven') {
+          sh 'mvn clean package -DskipTests=true'
+        }
+      }
+    }
+    stage('Build Container Image') {
+      steps {
+        container('buildah') {
+          sh """
+            buildah build -f ${DOCKERFILE} \
+              -t ${IMAGE_TAG}:${BUILD_NUMBER} \
+              -t ${IMAGE_TAG}:latest .
+          """
+        }
+      }
+    }
+    stage('Push Container Image') {
+      steps {
+        container('buildah') {
+          sh """
+            buildah push ${IMAGE_TAG}:${BUILD_NUMBER}
+            buildah push ${IMAGE_TAG}:latest
+          """
+        }
       }
     }
   }
 }
+
